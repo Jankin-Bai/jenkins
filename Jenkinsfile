@@ -703,6 +703,19 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
 
                         script {
 
+                            if (params.DRY_RUN.toBoolean()) {
+                                echo '[DRY-RUN] Skipping firmware layout detection (no .bin in dry-run). Using fallback addresses.'
+                                env.BL_ADDR     = '0x00204000'
+                                env.BL_END      = '0x0023FFFF'
+                                env.APP_ADDR    = '0x00240000'
+                                env.APP_END     = '0x00297FFF'
+                                env.BANK_B_ADDR = '0x00298000'
+                                env.BANK_B_END  = '0x002EFFFF'
+                                env.BL_RTT_ADDR  = '0x2000C830'
+                                env.APP_RTT_ADDR = '0x2000D000'
+                                echo "Layout (fallback): BL=${env.BL_ADDR}-${env.BL_END} APP=${env.APP_ADDR}-${env.APP_END} BANK_B=${env.BANK_B_ADDR}-${env.BANK_B_END} NVDS=${env.NVDS_ADDR}"
+                            } else {
+
                             def blMap  = "${env.BL_GCC}\\out\\lst\\app_bootloader.map"
                             def appMap = "${env.APP_GCC}\\out\\lst\\ble_app_uart_c.map"
                             def blBin  = "${env.CI_ROOT}\\bl_fw.bin"
@@ -771,6 +784,7 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
 
                             echo "Layout: BL=${env.BL_ADDR}-${env.BL_END} APP=${env.APP_ADDR}-${env.APP_END} BANK_B=${env.BANK_B_ADDR}-${env.BANK_B_END} NVDS=${env.NVDS_ADDR}"
                             echo "RTT: BL=${env.BL_RTT_ADDR} APP=${env.APP_RTT_ADDR ?: 'not detected (will scan)'}"
+                            }
                         }
                     }
                 }
@@ -855,6 +869,14 @@ if errorlevel 1 (echo ERROR: flash_plan.py validate failed & exit /b 1)
 
                         script {
 
+                            if (params.DRY_RUN.toBoolean()) {
+                                echo '[DRY-RUN] No real .bin files. Using placeholder image paths.'
+                                env.BL_IMAGE  = "${env.CI_ROOT}\\bl_fw.bin"
+                                env.APP_IMAGE = "${env.CI_ROOT}\\app_fw.bin"
+                                echo "BOOTLOADER IMAGE (placeholder): ${env.BL_IMAGE}"
+                                echo "APP IMAGE (placeholder): ${env.APP_IMAGE}"
+                            } else {
+
                             // Bootloader image: prefer CI_ROOT/bl_fw.bin (generated in Stage 2)
                             def blCandidates = ["${env.CI_ROOT}\\bl_fw.bin"]
                             def blImage = blCandidates.find { fileExists(it) }
@@ -902,6 +924,7 @@ echo NOT_FOUND
 
                             echo "BOOTLOADER IMAGE: ${env.BL_IMAGE}"
                             echo "APP IMAGE: ${env.APP_IMAGE}"
+                            }
                         }
                     }
                 }
