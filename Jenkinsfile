@@ -774,13 +774,19 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
                             // Safety clamp: BANK_B_END must not overlap NVDS.
                             // detect_firmware_layout.py may report a bank_b end that
                             // bleeds into the NVDS region; cap it to NVDS-1.
+                            // Use string comparison (sandbox-safe: no Integer.decode).
                             if (env.BANK_B_END && env.NVDS_ADDR) {
-                                def bbEnd  = Integer.decode(env.BANK_B_END)
-                                def nvds   = Integer.decode(env.NVDS_ADDR)
-                                if (bbEnd >= nvds) {
-                                    def clamped = nvds - 1
-                                    echo "[WARN] BANK_B_END=${env.BANK_B_END} overlaps NVDS=${env.NVDS_ADDR}. Clamping BANK_B_END to 0x${Integer.toHexString(clamped)}"
-                                    env.BANK_B_END = String.format('0x%08X', clamped)
+                                def bbEndHex = env.BANK_B_END.replace('0x', '')
+                                def nvdsHex  = env.NVDS_ADDR.replace('0x', '')
+                                if (bbEndHex > nvdsHex) {
+                                    // NVDS ends in 0000; NVDS-1 ends in EFFF.
+                                    // Subtract 1 from the 4-digit suffix.
+                                    def prefix = nvdsHex.substring(0, nvdsHex.length() - 4)
+                                    def suffix = nvdsHex.substring(nvdsHex.length() - 4)
+                                    def clampedSuffix = Integer.parseInt(suffix, 16) - 1
+                                    def clampedHex = String.format('%s%04X', prefix, clampedSuffix)
+                                    echo "[WARN] BANK_B_END=${env.BANK_B_END} overlaps NVDS=${env.NVDS_ADDR}. Clamping to 0x${clampedHex}"
+                                    env.BANK_B_END = '0x' + clampedHex
                                 }
                             }
 
