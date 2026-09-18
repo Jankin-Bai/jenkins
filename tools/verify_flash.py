@@ -120,7 +120,7 @@ def main() -> int:
     if start is not None:
         non_ff.append((start, len(sca) - 1))
     print("Non-0xFF regions in SCA: %s" % (
-        ["0x%04X-0x%04X" % (s, e) for s in non_ff] or "none (all erased)"
+        ["0x%04X-0x%04X" % (s, e) for s, e in non_ff] or "none (all erased)"
     ))
 
     # --- Locate the Goodix image-info pattern (0x4744 = "44 47") ---
