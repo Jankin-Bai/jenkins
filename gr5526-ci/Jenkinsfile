@@ -73,8 +73,8 @@ pipeline {
         // One Hardware Agent owns: DUT + J-Link + GR5xxx_console
         // Do not allow two builds to operate on the same hardware.
         disableConcurrentBuilds()
-        // CI scripts come from SCM (Pipeline from SCM checkout).
-        // Firmware source does NOT come from SCM - selected via BL_PROJECT_PATH / APP_PROJECT_PATH.
+        // We do manual checkout in Stage 0 with retry logic (network resilience).
+        skipDefaultCheckout(true)
     }
 
 
@@ -245,6 +245,45 @@ pipeline {
 
 
         // ====================================================================
+        // Stage 0: Checkout SCM (with retry for network resilience)
+        // ====================================================================
+
+        stage('0. Checkout SCM') {
+
+            steps {
+
+                echo '[Stage0] Checking out CI scripts from SCM (with retry)'
+
+                script {
+
+                    def maxAttempts = 3
+                    def retryDelaySec = 15
+
+                    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                        try {
+                            echo "[Stage0] Checkout attempt ${attempt}/${maxAttempts} ..."
+                            checkout scm
+                            echo "[Stage0] Checkout SUCCESS on attempt ${attempt}"
+                            break
+                        } catch (Exception e) {
+                            if (attempt == maxAttempts) {
+                                error(
+                                    "SCM checkout FAILED after ${maxAttempts} attempts. " +
+                                    "Last error: ${e.getMessage()}. " +
+                                    "Check network connection to GitHub."
+                                )
+                            }
+                            echo "[Stage0] Checkout failed (attempt ${attempt}/${maxAttempts}): ${e.getMessage()}"
+                            echo "[Stage0] Waiting ${retryDelaySec}s before retry ..."
+                            sleep(time: retryDelaySec, unit: 'SECONDS')
+                        }
+                    }
+                }
+            }
+        }
+
+
+        // ====================================================================
         // Stage 1: Prepare Environment (SERIAL)
         // ====================================================================
 
@@ -405,8 +444,13 @@ if not exist ".venv\\Scripts\\python.exe" (
 ) else (
     echo [venv] Reusing existing virtual environment
 )
-echo [venv] Installing dependencies...
-".venv\\Scripts\\python.exe" -m pip install --quiet -r requirements.txt
+echo [venv] Installing dependencies (with pip retry)...
+".venv\\Scripts\\python.exe" -m pip install --quiet --retries 5 --timeout 60 -r requirements.txt
+if errorlevel 1 (
+    echo [venv] pip install failed on first try, retrying after 10s...
+    ping -n 11 127.0.0.1 >nul
+    ".venv\\Scripts\\python.exe" -m pip install --quiet --retries 5 --timeout 60 -r requirements.txt
+)
 echo [venv] Setup complete
 ".venv\\Scripts\\python.exe" --version
 '''
