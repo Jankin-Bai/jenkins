@@ -293,21 +293,16 @@ pipeline {
 
 
                 // ============================================================
-                // 1.1 Python Venv Setup (MUST run before env check)
+                // 1.1 Python Venv Setup (ALWAYS runs - needed for env check)
                 // ============================================================
 
                 stage('1.1 Python Venv Setup') {
 
                     steps {
 
-                        echo '[Stage1.1] Setting up Python virtual environment'
+                        echo '[Stage1.1] Setting up Python virtual environment (always runs)'
 
-                        script {
-
-                            if (params.DRY_RUN.toBoolean()) {
-                                echo '[DRY-RUN] would create/activate venv and install requirements'
-                            } else {
-                                bat '''
+                        bat '''
 @echo off
 cd /d "%CI_ROOT%"
 if not exist ".venv\\Scripts\\python.exe" (
@@ -326,8 +321,6 @@ if errorlevel 1 (
 echo [venv] Setup complete
 ".venv\\Scripts\\python.exe" --version
 '''
-                            }
-                        }
 
                         echo '[PASS] venv-setup complete'
                     }
