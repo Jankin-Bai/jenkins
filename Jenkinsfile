@@ -220,24 +220,13 @@ pipeline {
         // --------------------------------------------------------------------
         // Runtime information (populated during pipeline)
         // NOTE: JLINK_PATH, JLINK_SERIAL, JLINK_IDX, JLINK_USB_ID are NOT
-        // pre-declared here. Jenkins CPS drops env.XXX assignments inside
-        // each{} closure for variables pre-declared in environment{}.
-        // They are assigned at runtime by jlink_detect.py parsing.
-        // --------------------------------------------------------------------
+        // NOTE: BL_ADDR, BL_END, APP_ADDR, APP_END, BANK_B_ADDR, BANK_B_END,
+        // BL_IMAGE, APP_IMAGE, BL_RTT_ADDR, APP_RTT_ADDR, BL_BUILD_STATUS,
+        // APP_BUILD_STATUS are NOT pre-declared here. Jenkins CPS drops
+        // env.XXX assignments for variables pre-declared in environment{}.
+        // They are assigned at runtime (layout detection / parallel branches).
 
         CHIP          = 'GR5526'
-        BL_ADDR       = ''
-        BL_END        = ''
-        APP_ADDR      = ''
-        APP_END       = ''
-        BANK_B_ADDR   = ''
-        BANK_B_END    = ''
-        BL_IMAGE      = ''
-        APP_IMAGE     = ''
-        BL_RTT_ADDR   = ''
-        APP_RTT_ADDR  = ''
-        BL_BUILD_STATUS  = ''
-        APP_BUILD_STATUS = ''
     }
 
 
