@@ -1,0 +1,56 @@
+# ============================================================================
+# Jenkins workspace .gitignore
+# Applies to all job directories under workspace/
+# ============================================================================
+
+# Python virtual environments
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/*.egg-info/
+
+# Build artifacts (firmware binaries, maps, objects)
+**/*.bin
+**/*.elf
+**/*.map
+**/*.o
+**/*.obj
+**/*.lst
+**/obj_list.txt
+**/bl_fw.bin
+**/app_fw.bin
+**/verify_*.bin
+**/rtt_result.json
+**/sca_boot_info.bin
+
+# Build output directories
+**/artifacts/
+**/out/
+**/build/
+**/dist/
+
+# Jenkins temporary directories
+**/@tmp/
+**/@script/
+**/@libs/
+
+# Logs
+**/*.log
+**/logs/
+
+# IDE
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Batch temp
+**/*.bat.tmp
+**/*.tmp
