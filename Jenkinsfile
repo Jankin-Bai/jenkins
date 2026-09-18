@@ -219,11 +219,13 @@ pipeline {
 
         // --------------------------------------------------------------------
         // Runtime information (populated during pipeline)
+        // NOTE: JLINK_PATH, JLINK_SERIAL, JLINK_IDX, JLINK_USB_ID are NOT
+        // pre-declared here. Jenkins CPS drops env.XXX assignments inside
+        // each{} closure for variables pre-declared in environment{}.
+        // They are assigned at runtime by jlink_detect.py parsing.
         // --------------------------------------------------------------------
 
         CHIP          = 'GR5526'
-        JLINK_SERIAL  = ''
-        JLINK_IDX     = ''
         BL_ADDR       = ''
         BL_END        = ''
         APP_ADDR      = ''
@@ -358,9 +360,10 @@ echo [venv] Setup complete
 
                             // ------------------------------------------------
                             // J-Link auto detection (outputs key=value to stdout)
-                            // Use -u flag for unbuffered stdout (critical for
-                            // bat(returnStdout: true) on Windows - Python uses
-                            // full buffering when stdout is redirected to pipe).
+                            // Use -u flag for unbuffered stdout.
+                            // NOTE: JLINK_* vars are NOT pre-declared in environment{}
+                            // because Jenkins CPS drops closure assignments for
+                            // pre-declared env vars.
                             // ------------------------------------------------
 
                             echo '>> J-Link auto-detection'
@@ -372,12 +375,15 @@ echo [venv] Setup complete
 
                             echo "DEBUG detectOut=[${detectOut}]"
 
-                            detectOut.split('\n').each { line ->
+                            detectOut.split(/\r?\n/).each { rawLine ->
+                                def line = rawLine.trim()
+                                if (!line || !line.contains('=')) return
                                 def parts = line.split('=', 2)
                                 if (parts.length == 2) {
                                     def key = parts[0].trim()
                                     def val = parts[1].trim()
-                                    if (key == 'JLINK_PATH')   { env.JLINK_PATH   = val }
+                                    echo "  DEBUG line: key=[${key}] val=[${val}]"
+                                    if (key == 'JLINK_PATH')     { env.JLINK_PATH   = val }
                                     else if (key == 'JLINK_SERIAL') { env.JLINK_SERIAL = val }
                                     else if (key == 'JLINK_IDX')    { env.JLINK_IDX    = val }
                                     else if (key == 'JLINK_USB_ID') { env.JLINK_USB_ID = val }
@@ -700,7 +706,7 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
 """
 
                             // Build detection command
-                            // Use -u for unbuffered stdout (same fix as Stage 1.2)
+                            // Use -u for unbuffered stdout
                             def layoutCmd =
                                 "@\"${env.VENV_PY}\" -u \"${env.TOOLS}\\detect_firmware_layout.py\" " +
                                 "--bl-map \"${blMap}\" --bl-bin \"${blBin}\" --app-bin \"${appBin}\""
@@ -722,7 +728,9 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
 
                             echo "DEBUG layoutOut=[${layoutOut}]"
 
-                            layoutOut.split('\n').each { line ->
+                            layoutOut.split(/\r?\n/).each { rawLine ->
+                                def line = rawLine.trim()
+                                if (!line || !line.contains('=')) return
                                 def parts = line.split('=', 2)
                                 if (parts.length == 2) {
                                     def key = parts[0].trim()
