@@ -699,7 +699,7 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
                                 env.APP_ADDR    = '0x00240000'
                                 env.APP_END     = '0x00297FFF'
                                 env.BANK_B_ADDR = '0x00298000'
-                                env.BANK_B_END  = '0x002EFFFF'
+                                env.BANK_B_END  = '0x002EEFFF'
                                 env.BL_RTT_ADDR  = '0x2000C830'
                                 env.APP_RTT_ADDR = '0x2000D000'
                                 echo "Layout (fallback): BL=${env.BL_ADDR}-${env.BL_END} APP=${env.APP_ADDR}-${env.APP_END} BANK_B=${env.BANK_B_ADDR}-${env.BANK_B_END} NVDS=${env.NVDS_ADDR}"
@@ -762,7 +762,7 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
                                     env.APP_ADDR    = '0x00240000'
                                     env.APP_END     = '0x00297FFF'
                                     env.BANK_B_ADDR = '0x00298000'
-                                    env.BANK_B_END  = '0x002EFFFF'
+                                    env.BANK_B_END  = '0x002EEFFF'
                                 } else {
                                     error(
                                         'Firmware layout detection FAILED - missing BL_ADDR or APP_ADDR. ' +
