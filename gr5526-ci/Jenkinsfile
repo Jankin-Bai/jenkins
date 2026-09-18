@@ -174,13 +174,15 @@ pipeline {
         // CI root (Jenkins workspace, checked out from SCM)
         // SCM repo root = WORKSPACE, CI code lives in WORKSPACE/gr5526-ci/
         // All paths point inside gr5526-ci/ - no hardcoded absolute paths.
+        // NOTE: MUST use double quotes for Groovy variable interpolation!
+        // Single quotes would make ${WORKSPACE} a literal string.
         // --------------------------------------------------------------------
 
-        CI_ROOT   = '${WORKSPACE}\\gr5526-ci'
-        VENV_PY   = '${WORKSPACE}\\gr5526-ci\\.venv\\Scripts\\python.exe'
-        TOOLS     = '${WORKSPACE}\\gr5526-ci\\tools'
-        CI_DIR    = '${WORKSPACE}\\gr5526-ci\\ci'
-        ARTIFACTS = '${WORKSPACE}\\gr5526-ci\\artifacts'
+        CI_ROOT   = "${WORKSPACE}\\gr5526-ci"
+        VENV_PY   = "${WORKSPACE}\\gr5526-ci\\.venv\\Scripts\\python.exe"
+        TOOLS     = "${WORKSPACE}\\gr5526-ci\\tools"
+        CI_DIR    = "${WORKSPACE}\\gr5526-ci\\ci"
+        ARTIFACTS = "${WORKSPACE}\\gr5526-ci\\artifacts"
 
 
         // --------------------------------------------------------------------
