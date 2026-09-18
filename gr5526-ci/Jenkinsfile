@@ -6,8 +6,9 @@
 //
 //   Jenkins SCM (GitHub / Gitea)
 //       |
-//       +-- Jenkinsfile
-//       +-- CI tools (tools/*.py, ci/*.py)
+//       +-- gr5526-ci/Jenkinsfile
+//       +-- gr5526-ci/tools/*.py
+//       +-- gr5526-ci/ci/*.py
 //       |
 //       v
 //   GR5526 Hardware Agent (gr5526-hw label)
@@ -171,14 +172,15 @@ pipeline {
 
         // --------------------------------------------------------------------
         // CI root (Jenkins workspace, checked out from SCM)
-        // All paths are relative to WORKSPACE - no hardcoded absolute paths.
+        // SCM repo root = WORKSPACE, CI code lives in WORKSPACE/gr5526-ci/
+        // All paths point inside gr5526-ci/ - no hardcoded absolute paths.
         // --------------------------------------------------------------------
 
-        CI_ROOT   = '${WORKSPACE}'
-        VENV_PY   = '${WORKSPACE}\\.venv\\Scripts\\python.exe'
-        TOOLS     = '${WORKSPACE}\\tools'
-        CI_DIR    = '${WORKSPACE}\\ci'
-        ARTIFACTS = '${WORKSPACE}\\artifacts'
+        CI_ROOT   = '${WORKSPACE}\\gr5526-ci'
+        VENV_PY   = '${WORKSPACE}\\gr5526-ci\\.venv\\Scripts\\python.exe'
+        TOOLS     = '${WORKSPACE}\\gr5526-ci\\tools'
+        CI_DIR    = '${WORKSPACE}\\gr5526-ci\\ci'
+        ARTIFACTS = '${WORKSPACE}\\gr5526-ci\\artifacts'
 
 
         // --------------------------------------------------------------------
