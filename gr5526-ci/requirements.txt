@@ -1,3 +1,0 @@
-pylink-square>=2.0.0
-pyserial>=3.5
-paho-mqtt>=1.6.0
