@@ -42,6 +42,7 @@
 // Centralizes: DRY_RUN mode, logging, error propagation.
 // Flash main flow stays readable - callers see explicit App-first/BL-last order.
 //
+
 def grConsole(String args) {
     if (params.DRY_RUN.toBoolean()) {
         echo "[DRY-RUN] GR5xxx_console: ${args}"
@@ -104,6 +105,12 @@ pipeline {
             name: 'SKIP_FLASH',
             defaultValue: false,
             description: 'Skip all hardware flash operations.'
+        )
+
+        booleanParam(
+            name: 'WAIT_FOR_HUMAN_CONFIRMATION',
+            defaultValue: false,
+            description: 'Wait for human confirmation before real hardware flash. Default false = board already plugged in, proceed automatically (unattended wet run). Only takes effect when DRY_RUN=false.'
         )
 
 
@@ -551,7 +558,7 @@ mingw32-make SDK_ROOT="%APP_SDK%" V=1 2>&1
 if exist "out\\lst\\ble_app_uart_c.elf" goto build_ok
 echo [WARN] Link failed on attempt 1. Retrying with response file...
 if not exist "out\\obj" goto build_fail
-dir /b /s out\\obj\\*.o > obj_list.txt
+dir /b /s /o-d "out\\obj\\*.o" > obj_list.txt
 echo [build-app] Linking (attempt 2 with response file)...
 mingw32-make SDK_ROOT="%APP_SDK%" V=1 OBJ_ADJUST="@obj_list.txt" 2>&1
 if exist "out\\lst\\ble_app_uart_c.elf" goto build_ok
@@ -726,7 +733,7 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
                             // APP map is optional (may be missing if build failed)
                             def appMapExists = bat(
                                 returnStatus: true,
-                                script: "@if exist \"${appMap}\" exit /b 0 else exit /b 1"
+                                script: '@if exist "${appMap}" exit /b 0 else exit /b 1'
                             ) == 0
 
                             if (appMapExists) {
@@ -948,12 +955,14 @@ echo NOT_FOUND
 
                     steps {
 
-                        echo '[Stage4.5] AWAITING HUMAN CONFIRMATION before real hardware flash'
+                        echo '[Stage4.5] Hardware flash confirmation gate (WAIT_FOR_HUMAN_CONFIRMATION=' + params.WAIT_FOR_HUMAN_CONFIRMATION + ')'
 
                         script {
 
-                            input(
-                                message: """
+                            if (params.WAIT_FOR_HUMAN_CONFIRMATION) {
+
+                                input(
+                                    message: """
 ============================================================
 GR5526 HARDWARE FLASH CONFIRMATION
 ============================================================
@@ -984,11 +993,15 @@ FLASH ORDER
 ------------------------------------------------------------
 WARNING: THIS WILL MODIFY GR5526 FLASH.
 ============================================================
-""",
-                                ok: 'Flash Device'
-                            )
+                                    """
+                                    ok: 'Flash Device'
+                                )
 
-                            echo '[PASS] Human confirmation received. Proceeding with hardware flash.'
+                                echo '[PASS] Human confirmation received. Proceeding with hardware flash.'
+                            } else {
+
+                                echo '[PASS] Board assumed ready (WAIT_FOR_HUMAN_CONFIRMATION=false). Skipping human confirmation, proceeding automatically.'
+                            }
                         }
                     }
                 }
