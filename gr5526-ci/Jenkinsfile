@@ -293,14 +293,56 @@ pipeline {
 
 
                 // ============================================================
-                // 1.1 Environment Check
+                // 1.1 Python Venv Setup (MUST run before env check)
                 // ============================================================
 
-                stage('1.1 Environment Check') {
+                stage('1.1 Python Venv Setup') {
 
                     steps {
 
-                        echo '[Stage1.1] Starting environment verification'
+                        echo '[Stage1.1] Setting up Python virtual environment'
+
+                        script {
+
+                            if (params.DRY_RUN.toBoolean()) {
+                                echo '[DRY-RUN] would create/activate venv and install requirements'
+                            } else {
+                                bat '''
+@echo off
+cd /d "%CI_ROOT%"
+if not exist ".venv\\Scripts\\python.exe" (
+    echo [venv] Creating virtual environment...
+    python -m venv .venv
+) else (
+    echo [venv] Reusing existing virtual environment
+)
+echo [venv] Installing dependencies (with pip retry)...
+".venv\\Scripts\\python.exe" -m pip install --quiet --retries 5 --timeout 60 -r requirements.txt
+if errorlevel 1 (
+    echo [venv] pip install failed on first try, retrying after 10s...
+    ping -n 11 127.0.0.1 >nul
+    ".venv\\Scripts\\python.exe" -m pip install --quiet --retries 5 --timeout 60 -r requirements.txt
+)
+echo [venv] Setup complete
+".venv\\Scripts\\python.exe" --version
+'''
+                            }
+                        }
+
+                        echo '[PASS] venv-setup complete'
+                    }
+                }
+
+
+                // ============================================================
+                // 1.2 Environment Check (uses venv python from 1.1)
+                // ============================================================
+
+                stage('1.2 Environment Check') {
+
+                    steps {
+
+                        echo '[Stage1.2] Starting environment verification'
 
                         script {
 
@@ -416,48 +458,6 @@ echo Python syntax check PASSED.
 '''
 
                         echo '[PASS] env-check: all tools and firmware projects verified'
-                    }
-                }
-
-
-                // ============================================================
-                // 1.2 Python Venv Setup
-                // ============================================================
-
-                stage('1.2 Python Venv Setup') {
-
-                    steps {
-
-                        echo '[Stage1.2] Setting up Python virtual environment'
-
-                        script {
-
-                            if (params.DRY_RUN.toBoolean()) {
-                                echo '[DRY-RUN] would create/activate venv and install requirements'
-                            } else {
-                                bat '''
-@echo off
-cd /d "%CI_ROOT%"
-if not exist ".venv\\Scripts\\python.exe" (
-    echo [venv] Creating virtual environment...
-    python -m venv .venv
-) else (
-    echo [venv] Reusing existing virtual environment
-)
-echo [venv] Installing dependencies (with pip retry)...
-".venv\\Scripts\\python.exe" -m pip install --quiet --retries 5 --timeout 60 -r requirements.txt
-if errorlevel 1 (
-    echo [venv] pip install failed on first try, retrying after 10s...
-    ping -n 11 127.0.0.1 >nul
-    ".venv\\Scripts\\python.exe" -m pip install --quiet --retries 5 --timeout 60 -r requirements.txt
-)
-echo [venv] Setup complete
-".venv\\Scripts\\python.exe" --version
-'''
-                            }
-                        }
-
-                        echo '[PASS] venv-setup complete'
                     }
                 }
             }
