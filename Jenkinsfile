@@ -650,19 +650,29 @@ if exist "%CI_ROOT%\\app_fw.bin" (
 
                     bat '@if not exist "%ARTIFACTS%" mkdir "%ARTIFACTS%"'
 
+                    // Build-type label: compute in Groovy with safe defaults.
+                    // BL_BUILD_STATUS/APP_BUILD_STATUS are pre-declared in environment{},
+                    // so env.X assignments from parallel branches are dropped by CPS.
+                    // Use Groovy interpolation (not cmd %VAR% expansion) so the value is
+                    // baked into the bat command with a non-empty fallback.
+                    def blStatus  = env.BL_BUILD_STATUS?.trim()  ?: 'unknown'
+                    def appStatus = env.APP_BUILD_STATUS?.trim() ?: 'unknown'
+                    def buildType  = "${blStatus}-APP-${appStatus}"
+                    echo "[Stage3] build-type label = ${buildType}"
+
                     // firmware_metadata.py generate subcommand
-                    bat '''
+                    bat """
 @"%VENV_PY%" "%TOOLS%\\firmware_metadata.py" generate ^
     --chip "%CHIP%" ^
     --build-number "%BUILD_NUMBER%" ^
     --bootloader-sdk "1.0.3" ^
     --app-sdk "1.0.4" ^
     --app-image "app_fw.bin" ^
-    --build-type "%BL_BUILD_STATUS%-APP-%APP_BUILD_STATUS%" ^
+    --build-type "${buildType}" ^
     --workspace "%CI_ROOT%" ^
     --output "%ARTIFACTS%\\firmware_metadata.json"
 if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
-'''
+"""
 
                     echo '[PASS] firmware_metadata.json generated'
                 }
