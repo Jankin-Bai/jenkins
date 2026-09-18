@@ -1,6 +1,18 @@
 # ============================================================================
 # Jenkins workspace .gitignore
-# Applies to all job directories under workspace/
+# Only track gr5526-ci/ — all other job dirs (ota-*, tank-battle-*, etc.) ignored
+# ============================================================================
+
+# Ignore everything in workspace root
+/*
+
+# But keep these
+!/.gitignore
+!/gr5526-ci/
+
+
+# ============================================================================
+# Within tracked dirs, exclude build artifacts and temp files
 # ============================================================================
 
 # Python virtual environments
