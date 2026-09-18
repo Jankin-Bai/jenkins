@@ -1272,6 +1272,7 @@ WARNING: THIS WILL MODIFY GR5526 FLASH.
 if not exist "artifacts" mkdir "artifacts"
 xcopy /E /I /Y "%ARTIFACTS%\\*" "artifacts\\" 2>nul
 if errorlevel 1 echo WARNING: artifact copy failed.
+exit /b 0
 '''
 
                 archiveArtifacts(
