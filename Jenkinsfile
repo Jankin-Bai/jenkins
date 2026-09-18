@@ -771,6 +771,19 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
                                 }
                             }
 
+                            // Safety clamp: BANK_B_END must not overlap NVDS.
+                            // detect_firmware_layout.py may report a bank_b end that
+                            // bleeds into the NVDS region; cap it to NVDS-1.
+                            if (env.BANK_B_END && env.NVDS_ADDR) {
+                                def bbEnd  = Integer.decode(env.BANK_B_END)
+                                def nvds   = Integer.decode(env.NVDS_ADDR)
+                                if (bbEnd >= nvds) {
+                                    def clamped = nvds - 1
+                                    echo "[WARN] BANK_B_END=${env.BANK_B_END} overlaps NVDS=${env.NVDS_ADDR}. Clamping BANK_B_END to 0x${Integer.toHexString(clamped)}"
+                                    env.BANK_B_END = String.format('0x%08X', clamped)
+                                }
+                            }
+
                             echo "Layout: BL=${env.BL_ADDR}-${env.BL_END} APP=${env.APP_ADDR}-${env.APP_END} BANK_B=${env.BANK_B_ADDR}-${env.BANK_B_END} NVDS=${env.NVDS_ADDR}"
                             echo "RTT: BL=${env.BL_RTT_ADDR} APP=${env.APP_RTT_ADDR ?: 'not detected (will scan)'}"
                             }
