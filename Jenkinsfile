@@ -545,15 +545,15 @@ echo [PASS] bootloader compiled: out\\app_bootloader.bin
 @echo off
 cd /d "%APP_GCC%"
 echo [build-app] Cleaning...
-mingw32-make SDK_ROOT="%APP_SDK%" clean 2>&1
+mingw32-make SDK_ROOT="%APP_SDK:\=/%" clean 2>&1
 echo [build-app] Compiling (attempt 1)...
-mingw32-make SDK_ROOT="%APP_SDK%" 2>&1
+mingw32-make SDK_ROOT="%APP_SDK:\=/%" 2>&1
 if exist "out\\lst\\ble_app_uart_c.elf" goto build_ok
 echo [WARN] Link failed on attempt 1. Retrying with response file...
 if not exist "out\\obj" goto build_fail
 dir /b /s out\\obj\\*.o > obj_list.txt
 echo [build-app] Linking (attempt 2 with response file)...
-mingw32-make SDK_ROOT="%APP_SDK%" OBJ_ADJUST="@obj_list.txt" 2>&1
+mingw32-make SDK_ROOT="%APP_SDK:\=/%" OBJ_ADJUST="@obj_list.txt" 2>&1
 if exist "out\\lst\\ble_app_uart_c.elf" goto build_ok
 goto build_fail
 
