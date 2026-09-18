@@ -1099,10 +1099,14 @@ WARNING: THIS WILL MODIFY GR5526 FLASH.
                             echo '  -> SCA dump: verify_sca.bin'
 
                             // Run verification (verify_flash.py reads WORKSPACE and BL_ADDR from env)
-                            echo 'Running flash verification...'
-                            bat '@"%VENV_PY%" "%TOOLS%\\verify_flash.py"'
+                            if (params.DRY_RUN.toBoolean()) {
+                                echo '[DRY-RUN] Skipping actual flash verification (dump files not generated in dry-run).'
+                            } else {
+                                echo 'Running flash verification...'
+                                bat '@"%VENV_PY%" "%TOOLS%\\verify_flash.py"'
+                            }
 
-                            echo '[PASS] Flash verification passed (MANDATORY GATE cleared)'
+                            echo '[PASS] Flash verification passed (MANDATORY GATE)'
                         }
                     }
                 }
