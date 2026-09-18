@@ -358,14 +358,19 @@ echo [venv] Setup complete
 
                             // ------------------------------------------------
                             // J-Link auto detection (outputs key=value to stdout)
+                            // Use -u flag for unbuffered stdout (critical for
+                            // bat(returnStdout: true) on Windows - Python uses
+                            // full buffering when stdout is redirected to pipe).
                             // ------------------------------------------------
 
                             echo '>> J-Link auto-detection'
 
                             def detectOut = bat(
                                 returnStdout: true,
-                                script: '@"%VENV_PY%" "%TOOLS%\\jlink_detect.py"'
+                                script: '@"%VENV_PY%" -u "%TOOLS%\\jlink_detect.py"'
                             ).trim()
+
+                            echo "DEBUG detectOut=[${detectOut}]"
 
                             detectOut.split('\n').each { line ->
                                 def parts = line.split('=', 2)
@@ -378,6 +383,8 @@ echo [venv] Setup complete
                                     else if (key == 'JLINK_USB_ID') { env.JLINK_USB_ID = val }
                                 }
                             }
+
+                            echo "DEBUG parsed: JLINK_PATH=[${env.JLINK_PATH}] JLINK_IDX=[${env.JLINK_IDX}] JLINK_SERIAL=[${env.JLINK_SERIAL}]"
 
                             if (!env.JLINK_PATH || !env.JLINK_IDX) {
                                 error('J-Link auto-detection FAILED - check USB connection and software')
@@ -693,8 +700,9 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
 """
 
                             // Build detection command
+                            // Use -u for unbuffered stdout (same fix as Stage 1.2)
                             def layoutCmd =
-                                "@\"${env.VENV_PY}\" \"${env.TOOLS}\\detect_firmware_layout.py\" " +
+                                "@\"${env.VENV_PY}\" -u \"${env.TOOLS}\\detect_firmware_layout.py\" " +
                                 "--bl-map \"${blMap}\" --bl-bin \"${blBin}\" --app-bin \"${appBin}\""
 
                             // APP map is optional (may be missing if build failed)
@@ -711,6 +719,8 @@ if errorlevel 1 (echo ERROR: firmware_metadata.py generate failed & exit /b 1)
 
                             // Run detection (outputs key=value to stdout)
                             def layoutOut = bat(returnStdout: true, script: layoutCmd).trim()
+
+                            echo "DEBUG layoutOut=[${layoutOut}]"
 
                             layoutOut.split('\n').each { line ->
                                 def parts = line.split('=', 2)
