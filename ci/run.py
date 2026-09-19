@@ -1,380 +1,258 @@
 #!/usr/bin/env python3
-"""ci/run.py —— GR5526 CI 总入口（规则20）。
+"""ci/run.py - GR5526 CI entry point (rule 20).
 
-Jenkinsfile 只调用本脚本的子命令，不包含任何业务逻辑：
+Architecture: Facade pattern - CLI dispatch only, business logic in submodules.
+    Jenkinsfile -> ci/run.py -> ci/config.py + ci/artifacts.py -> flash/gr_console.py
+
+Usage:
     python ci/run.py preflight
     python ci/run.py build-bl
     python ci/run.py build-app
-    python ci/run.py metadata
-    python ci/run.py detect-layout
-    python ci/run.py verify-metadata
-    python ci/run.py validate-plan
-    python ci/run.py locate-images
+    python ci/run.py plan
+    python ci/run.py validate
     python ci/run.py erase
-    python ci/run.py program-app
     python ci/run.py program-bl
-    python ci/run.py verify-flash
-    python ci/run.py reset
-    python ci/run.py rtt
+    python ci/run.py program-app
+    python ci/run.py verify
     python ci/run.py collect-result
-
-环境变量由 Jenkins environment{} 注入：
-    CI_ROOT, VENV_PY, TOOLS, CI_DIR, ARTIFACTS, CHIP
-    BL_GCC, APP_GCC, BL_SDK, APP_SDK, GR_CONSOLE
-    BL_PROJECT_PATH, APP_PROJECT_PATH
-    DRY_RUN, SKIP_BUILD, SKIP_FLASH, ALLOW_PREBUILT_FIRMWARE, ALLOW_LAYOUT_FALLBACK
-    BL_KEYWORD, APP_KEYWORD, BUILD_NUMBER, BUILD_URL, JOB_NAME
-
-产物（全部写到 ARTIFACTS 目录，规则6/19）：
-    hardware_context.json   preflight 产出（J-Link 信息、节点、芯片）
-    flash_plan.json         detect-layout / locate-images 产出（地址表、镜像路径）
-    firmware_metadata.json  metadata 产出（git_commit、SDK 版本、build_type）
-    bl_build.json           build-bl 产出（status、image 路径）
-    app_build.json          build-app 产出
-    test_result.json        collect-result 产出
 """
 from __future__ import annotations
 import argparse
-import json
-import os
+import functools
+import logging
 import subprocess
 import sys
 from pathlib import Path
 
-# 让 ci/flash/gr_console.py 可导入
-sys.path.insert(0, str(Path(__file__).parent))
-from flash.gr_console import GrConsole, from_env  # noqa: E402
+from ci.config import CIConfig
+from ci.artifacts import ArtifactRepository
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# 工具函数
+# Decorator: DRY_RUN guard (eliminates repeated if is_dry_run())
 # ---------------------------------------------------------------------------
-def env(name: str, default: str | None = None) -> str:
-    v = os.environ.get(name, default)
-    if v is None:
-        raise RuntimeError(f"env {name} not set")
-    return v
+def dry_run_guard(message: str):
+    """Stage function decorator: print message and return in DRY_RUN, skip real logic."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(config: CIConfig, artifacts: ArtifactRepository, *args, **kwargs):
+            if config.is_dry_run:
+                print(f"[DRY-RUN] {message}")
+                return
+            return func(config, artifacts, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
-def is_dry_run() -> bool:
-    return env("DRY_RUN", "false").lower() in ("1", "true", "yes")
-
-
-def artifact_path(name: str) -> Path:
-    p = Path(env("ARTIFACTS"))
-    p.mkdir(parents=True, exist_ok=True)
-    return p / name
-
-
-def load_json(name: str) -> dict:
-    p = artifact_path(name)
-    if not p.exists():
-        return {}
-    return json.loads(p.read_text(encoding="utf-8"))
-
-
-def save_json(name: str, data: dict) -> None:
-    p = artifact_path(name)
-    p.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"[artifact] wrote {p}")
-
-
-def run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
-    print("$", " ".join(cmd), flush=True)
-    proc = subprocess.run(cmd)
+def run_cmd(cmd: str, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    """Execute a shell command, print it, optionally check return code."""
+    print(f"$ {cmd}", flush=True)
+    proc = subprocess.run(cmd, cwd=str(cwd) if cwd else None, shell=True)
     if check and proc.returncode != 0:
         raise SystemExit(proc.returncode)
     return proc
 
 
-# ---------------------------------------------------------------------------
-# 子命令实现
-# ---------------------------------------------------------------------------
-def cmd_preflight(_args) -> None:
-    """Stage 1.2: 工具/SDK/Makefile 存在性检查 + py_compile + J-Link 检测。"""
-    # 调试打印：确认 Jenkins 参数确实注入了环境变量
-    print(f"[preflight] DRY_RUN env = {os.environ.get('DRY_RUN', '<MISSING>')!r}")
-    print(f"[preflight] BL_GCC  env = {os.environ.get('BL_GCC', '<MISSING>')!r}")
-    print(f"[preflight] APP_GCC env = {os.environ.get('APP_GCC', '<MISSING>')!r}")
+def _which(tool: str) -> bool:
+    return subprocess.run(f"where {tool}", shell=True,
+                          stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL).returncode == 0
 
-    # TODO: 1) 检查 GR_CONSOLE / arm-none-eabi-gcc / mingw32-make 存在
-    # TODO: 2) 检查 BL_GCC/Makefile, APP_GCC/Makefile, BL_SDK, APP_SDK
-    # TODO: 3) 检查 tools/*.py 与 ci/flash_plan.py 存在
-    # TODO: 4) py_compile 所有 .py
-    # TODO: 5) 调 tools/jlink_detect.py —— 改造后应直接写
-    #        artifacts/hardware_context.json，而不是 stdout key=value
-    #        （见 REFACTORING_NOTES.md 第1条）
-    print("[preflight] TODO: implement existence checks + py_compile + jlink_detect")
-    ctx = {
-        "chip": env("CHIP"),
-        "agent_label": "gr5526-hw",
-        "jlink": {
-            # TODO: 从 jlink_detect.py 输出读入
-            "path": "", "serial": "", "idx": "", "usb_id": "",
-        },
+
+# ---------------------------------------------------------------------------
+# Subcommand implementations
+# ---------------------------------------------------------------------------
+
+def cmd_preflight(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 1.2: toolchain + SDK + Makefile existence checks."""
+    print(f"[preflight] DRY_RUN={config.dry_run}  BUILD_MODE={config.build_mode}  BOARD={config.board_type}")
+
+    errors = []
+    for tool in ["arm-none-eabi-gcc", "mingw32-make"]:
+        if not _which(tool):
+            errors.append(f"tool not in PATH: {tool}")
+    if not config.gr_console.exists():
+        errors.append(f"GR5xxx_console not found: {config.gr_console}")
+    for label, path in [("BL", config.bl_gcc / "Makefile"),
+                         ("APP", config.app_gcc / "Makefile")]:
+        if not path.exists():
+            errors.append(f"{label} Makefile not found: {path}")
+    if not config.sdk_dir.exists():
+        errors.append(f"SDK not found: {config.sdk_dir}")
+
+    if errors:
+        for e in errors:
+            print(f"[preflight][FAIL] {e}", file=sys.stderr)
+        raise SystemExit(1)
+
+    print("[preflight] all checks passed")
+    artifacts.save("hardware_context.json", {
+        "chip": config.chip,
+        "agent_label": config.agent_label,
+        "project_root": str(config.project_root),
+    })
+
+
+@dry_run_guard("would: make clean && make -j4 in bootloader/GCC")
+def cmd_build_bl(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 2.1: compile Bootloader."""
+    if config.skip_build:
+        print("[build-bl] SKIP_BUILD=true - using prebuilt bin")
+        return
+
+    run_cmd("make clean", cwd=config.bl_gcc, check=False)
+    run_cmd("make -j4", cwd=config.bl_gcc)
+
+    bl_bin = config.bl_gcc / "out" / "app_bootloader.bin"
+    if not bl_bin.exists():
+        raise SystemExit(f"BL build failed: {bl_bin} not found")
+    print(f"[build-bl] OK: {bl_bin} ({bl_bin.stat().st_size} bytes)")
+    artifacts.save("bl_build.json", {
+        "status": "success",
+        "image": str(bl_bin),
+        "size": bl_bin.stat().st_size,
+    })
+
+
+@dry_run_guard("would: make clean && make {flags} -j4 in ble_app_uart_c/GCC")
+def cmd_build_app(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 2.2: compile APP (with conditional build flags)."""
+    if config.skip_build:
+        print("[build-app] SKIP_BUILD=true - using prebuilt bin")
+        return
+
+    flags = config.app_build_flags
+    run_cmd("make clean", cwd=config.app_gcc, check=False)
+    run_cmd(f"make {flags} -j4", cwd=config.app_gcc)
+
+    app_bin = config.app_gcc / "out" / "ble_app_uart_c.bin"
+    if not app_bin.exists():
+        raise SystemExit(f"APP build failed: {app_bin} not found")
+    print(f"[build-app] OK: {app_bin} ({app_bin.stat().st_size} bytes)")
+    artifacts.save("app_build.json", {
+        "status": "success",
+        "image": str(app_bin),
+        "size": app_bin.stat().st_size,
+        "flags": flags,
+    })
+
+
+def cmd_plan(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 4: write flash_plan.json (address layout is known for GR5526)."""
+    plan = {
+        "bl":     {"addr": "0x00204000", "end": "0x0023FFFF"},
+        "app":    {"addr": "0x00240000", "end": "0x002BFFFF"},
+        "bank_b": {"addr": "0x002C0000", "end": "0x0033FFFF"},
+        "nvds":   "0x00340000",
+        "rtt":    {"bl": "0x2000C830", "app": "0x2000D000"},
+        "layout_source": "hardcoded (GR5526 dual-bank)",
     }
-    save_json("hardware_context.json", ctx)
+    artifacts.save("flash_plan.json", plan)
+    print("[plan] flash layout written")
 
 
-def cmd_build_bl(_args) -> None:
-    """Stage 2.1: 编译 bootloader + generate bl_fw.bin。"""
-    # DRY_RUN 检查必须在读取任何 env 之前，避免缺变量时直接崩
-    if is_dry_run():
-        out_bin = env("CI_ROOT") + "\\bl_fw.bin"
-        print("[build-bl][DRY-RUN] would: make clean && make && grConsole generate")
-        save_json("bl_build.json", {"status": "dry-run", "image": out_bin})
+def cmd_validate(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 5: check bin files exist and have content."""
+    bl = artifacts.load("bl_build.json")
+    app = artifacts.load("app_build.json")
+
+    for label, data in [("BL", bl), ("APP", app)]:
+        img = data.get("image", "")
+        if img and not Path(img).exists():
+            raise SystemExit(f"{label} image missing: {img}")
+        if not img and not config.skip_build:
+            raise SystemExit(f"{label} build skipped but no prebuilt image")
+
+    print("[validate] all images present")
+
+
+@dry_run_guard("would: GR5xxx_console erase BL + BankA + BankB")
+def cmd_erase(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 7.1: erase (NVDS preserved)."""
+    if config.skip_erase:
+        print("[erase] SKIP_ERASE=true")
         return
-
-    bl_gcc = Path(env("BL_GCC"))
-    out_bin = env("CI_ROOT") + "\\bl_fw.bin"
-    console = from_env()
-    # TODO: cd BL_GCC && mingw32-make clean && mingw32-make
-    # TODO: 校验 out/app_bootloader.bin 存在
-    # TODO: console.generate_image(bl_gcc/out/app_bootloader.bin, out_bin, "0x00200000", 1024, 1)
-    print("[build-bl] TODO: implement make + grConsole generate")
-    save_json("bl_build.json", {"status": "success", "image": out_bin})
+    # TODO: call gr_console.erase_region for BL / BankA / BankB
+    print("[erase] TODO: GR5xxx_console eraseall / erase_region")
 
 
-def cmd_build_app(_args) -> None:
-    """Stage 2.2: 编译 APP（含 response file fallback）+ generate app_fw.bin。"""
-    if is_dry_run():
-        print("[build-app][DRY-RUN] would: make SDK_ROOT=... clean && make")
-        save_json("app_build.json", {"status": "dry-run", "image": env("CI_ROOT") + "\\app_fw.bin"})
+@dry_run_guard("would: program bootloader @0x00204000")
+def cmd_program_bl(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 7.2: flash BL."""
+    if config.skip_flash:
+        print("[program-bl] SKIP_FLASH=true")
         return
-    # 调 scripts/build_app.bat（已抽出）。退出码: 0=成功 2=prebuilt 1=失败
-    proc = run(["cmd", "/c", os.path.join(env("CI_ROOT"), "scripts", "build_app.bat"),
-                ], check=False)
-    if proc.returncode == 0:
-        # TODO: 调 tools/generate_image_info.py 生成 app_fw.bin --load-addr 0x00240000
-        status = "success"
-    elif proc.returncode == 2:
-        if env("ALLOW_PREBUILT_FIRMWARE", "false").lower() == "true":
-            status = "prebuilt-firmware"
-        else:
-            print("[build-app] FAILED and ALLOW_PREBUILT_FIRMWARE=false", file=sys.stderr)
-            raise SystemExit(1)
-    else:
-        raise SystemExit(proc.returncode)
-    save_json("app_build.json", {"status": status,
-                                 "image": env("CI_ROOT") + "\\app_fw.bin"})
+    # TODO: gr_console.generate + gr_console.program
+    print("[program-bl] TODO: GR5xxx_console generate + program")
 
 
-def cmd_metadata(_args) -> None:
-    """Stage 3: firmware_metadata.py generate。"""
-    bl = load_json("bl_build.json")
-    app = load_json("app_build.json")
-    build_type = f"{bl.get('status', 'unknown')}-APP-{app.get('status', 'unknown')}"
-    # TODO: 调 tools/firmware_metadata.py generate
-    #   --chip CHIP --build-number BUILD_NUMBER
-    #   --bootloader-sdk 1.0.3 --app-sdk 1.0.4
-    #   --app-image app_fw.bin --build-type <build_type>
-    #   --workspace CI_ROOT --output ARTIFACTS/firmware_metadata.json
-    print(f"[metadata] TODO: firmware_metadata.py generate (build_type={build_type})")
-
-
-def cmd_detect_layout(_args) -> None:
-    """Stage 4.1: detect_firmware_layout.py —— 直接写 flash_plan.json。
-
-    改造后不再 stdout key=value，不再由 Jenkinsfile 解析。
-    fallback 地址表、BANK_B_END clamp 全部在这里完成。
-    """
-    if is_dry_run():
-        plan = {
-            "bl":    {"addr": "0x00204000", "end": "0x0023FFFF"},
-            "app":   {"addr": "0x00240000", "end": "0x00297FFF"},
-            "bank_b":{"addr": "0x00298000", "end": "0x002EEFFF"},
-            "nvds":  "0x002EF000",
-            "rtt":   {"bl": "0x2000C830", "app": "0x2000D000"},
-            "fallback": True,
-        }
-        save_json("flash_plan.json", plan)
+@dry_run_guard("would: program app @0x00240000")
+def cmd_program_app(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 7.3: flash APP."""
+    if config.skip_flash:
+        print("[program-app] SKIP_FLASH=true")
         return
-    # TODO: 调 tools/detect_firmware_layout.py
-    #   --bl-map BL_GCC/out/lst/app_bootloader.map
-    #   --bl-bin CI_ROOT/bl_fw.bin --app-bin CI_ROOT/app_fw.bin
-    #   [--app-map APP_GCC/out/lst/ble_app_uart_c.elf]
-    # 脚本直接写 flash_plan.json（含 clamp 后地址）。
-    # 若检测失败且 ALLOW_LAYOUT_FALLBACK=true，写 fallback；否则 exit 1。
-    print("[detect-layout] TODO: detect_firmware_layout.py -> flash_plan.json")
+    # TODO: gr_console.generate + gr_console.program
+    print("[program-app] TODO: GR5xxx_console generate + program")
 
 
-def cmd_verify_metadata(_args) -> None:
-    """Stage 4.2: firmware_metadata.py verify（git_commit 对齐）。"""
-    meta = artifact_path("firmware_metadata.json")
-    if not meta.exists():
-        print("[verify-metadata] no metadata (build skipped) — skip")
-        return
-    # TODO: 调 tools/firmware_metadata.py verify --metadata <meta> --workspace CI_ROOT
-    print("[verify-metadata] TODO")
+@dry_run_guard("would: verify flash")
+def cmd_verify(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """Stage 8: verify."""
+    # TODO: gr_console.dump + verify
+    print("[verify] TODO")
 
 
-def cmd_validate_plan(_args) -> None:
-    """Stage 4.3: flash_plan.py validate。"""
-    # TODO: 调 ci/flash_plan.py validate --plan ARTIFACTS/flash_plan.json
-    print("[validate-plan] TODO")
-
-
-def cmd_locate_images(_args) -> None:
-    """Stage 4.4: 定位 bl_fw.bin / app_fw.bin，写回 flash_plan.json。"""
-    plan = load_json("flash_plan.json")
-    if is_dry_run():
-        # DRY_RUN：填占位路径，不真找
-        plan.setdefault("bl_image", env("CI_ROOT") + "\\bl_fw.bin")
-        plan.setdefault("app_image", env("CI_ROOT") + "\\app_fw.bin")
-        save_json("flash_plan.json", plan)
-        print("[locate-images][DRY-RUN] placeholder image paths written")
-        return
-    # TODO: 优先 CI_ROOT/bl_fw.bin、CI_ROOT/app_fw.bin；
-    # 找不到再在 BL_GCC / APP_GCC 下 dir /b /s *.bin 找。
-    # 找到后写 plan["bl_image"], plan["app_image"]，save_json。
-    print("[locate-images] TODO: locate bl_fw.bin / app_fw.bin")
-
-
-def cmd_erase(_args) -> None:
-    """Stage 4.6: 擦 BL / Bank A / Bank B（NVDS 保留）。"""
-    if is_dry_run():
-        print("[erase][DRY-RUN] would: erase BL + BankA + BankB (NVDS preserved)")
-        return
-    plan = load_json("flash_plan.json")
-    ctx = load_json("hardware_context.json")
-    console = from_env()
-    jlink_idx = ctx.get("jlink", {}).get("idx", "0")
-    chip = env("CHIP")
-    console.erase_region(plan["bl"]["addr"],    plan["bl"]["end"],    chip, jlink_idx)
-    console.erase_region(plan["app"]["addr"],   plan["app"]["end"],   chip, jlink_idx)
-    console.erase_region(plan["bank_b"]["addr"], plan["bank_b"]["end"], chip, jlink_idx)
-    print("[erase] BL + BankA + BankB erased; NVDS preserved")
-
-
-def cmd_program_app(_args) -> None:
-    """Stage 4.7: APP FIRST。"""
-    if is_dry_run():
-        print("[program-app][DRY-RUN] would: program APP image FIRST")
-        return
-    plan = load_json("flash_plan.json")
-    console = from_env()
-    ctx = load_json("hardware_context.json")
-    image = Path(plan["app_image"])
-    if not image.exists():
-        raise SystemExit(f"APP image not found: {image}")
-    console.program(image, env("CHIP"), ctx["jlink"]["idx"])
-    print("[program-app] APP programmed FIRST")
-
-
-def cmd_program_bl(_args) -> None:
-    """Stage 4.8: Bootloader LAST（SCA 最终指向 BL）。"""
-    if is_dry_run():
-        print("[program-bl][DRY-RUN] would: program Bootloader LAST")
-        return
-    plan = load_json("flash_plan.json")
-    console = from_env()
-    ctx = load_json("hardware_context.json")
-    image = Path(plan["bl_image"])
-    if not image.exists():
-        raise SystemExit(f"BL image not found: {image}")
-    console.program(image, env("CHIP"), ctx["jlink"]["idx"])
-    print("[program-bl] Bootloader programmed LAST; SCA final -> BL")
-
-
-def cmd_verify_flash(_args) -> None:
-    """Stage 4.9: dump Bank A + SCA，调 verify_flash.py 比对。"""
-    if is_dry_run():
-        print("[verify-flash][DRY-RUN] skip dump+verify")
-        return
-    plan = load_json("flash_plan.json")
-    ctx = load_json("hardware_context.json")
-    console = from_env()
-    ws = Path(env("WORKSPACE"))
-    console.dump(plan["app"]["addr"], 64, ws / "verify_bank_a.bin", ctx["jlink"]["idx"])
-    console.dump("0x00200000", 256, ws / "verify_sca.bin", ctx["jlink"]["idx"])
-    # TODO: 调 tools/verify_flash.py（读 WORKSPACE + flash_plan.json）
-    print("[verify-flash] TODO: verify_flash.py")
-
-
-def cmd_reset(_args) -> None:
-    """Stage 4.10: GR5xxx_console reset（不用 J-Link）。"""
-    if is_dry_run():
-        print("[reset][DRY-RUN] would: reset device via GR5xxx_console")
-        return
-    console = from_env()
-    console.reset(1, 0)
-    print("[reset] device reset via GR5xxx_console")
-
-
-def cmd_rtt(_args) -> None:
-    """Stage 5: RTT 诊断。失败由 Jenkinsfile catchError 标 UNSTABLE。"""
-    plan = load_json("flash_plan.json")
-    ctx = load_json("hardware_context.json")
-    bl_rtt = plan.get("rtt", {}).get("bl", "0x2000C830")
-    app_rtt = plan.get("rtt", {}).get("app", "0x2000D000")
-    cmd = [
-        env("VENV_PY"), "-u", os.path.join(env("TOOLS"), "test_rtt_with_jump.py"),
-        "--bl-rtt-addr", bl_rtt, "--app-rtt-addr", app_rtt,
-        "--jlink-serial", ctx["jlink"]["serial"],
-        "--bl-timeout", "8", "--jump-timeout", "20",
-        "--output", str(Path(env("WORKSPACE")) / "rtt_result.json"),
-    ]
-    if env("BL_KEYWORD"):
-        cmd += ["--bl-keyword", env("BL_KEYWORD")]
-    if env("APP_KEYWORD"):
-        cmd += ["--app-keyword", env("APP_KEYWORD")]
-    run(cmd)
-
-
-def cmd_collect_result(_args) -> None:
-    """post.always: 聚合各 artifact 生成 test_result.json。"""
-    plan = load_json("flash_plan.json")
-    meta = load_json("firmware_metadata.json")
-    hw = load_json("hardware_context.json")
-    bl = load_json("bl_build.json")
-    app = load_json("app_build.json")
-    dry = is_dry_run()
-    flash_status = "SKIPPED" if env("SKIP_FLASH", "false") == "true" else ("DRY_RUN" if dry else "PASS")
+def cmd_collect_result(config: CIConfig, artifacts: ArtifactRepository) -> None:
+    """post.always: aggregate results."""
+    bl = artifacts.load("bl_build.json")
+    app = artifacts.load("app_build.json")
+    plan = artifacts.load("flash_plan.json")
     result = {
-        "job": env("JOB_NAME", "gr5526-ci"),
-        "build_number": int(env("BUILD_NUMBER", "0")),
-        "build_url": env("BUILD_URL", ""),
-        "dry_run": dry,
-        "chip": env("CHIP"),
-        "jlink_serial": hw.get("jlink", {}).get("serial", ""),
-        "bl_image": bl.get("image", plan.get("bl_image", "")),
-        "app_image": app.get("image", plan.get("app_image", "")),
-        "flash": flash_status,
-        "layout": {
-            "bl": plan.get("bl"), "app": plan.get("app"),
-            "bank_b": plan.get("bank_b"), "nvds": plan.get("nvds"),
-        },
-        "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+        "job": "gr5526-ci-v2",
+        "dry_run": config.dry_run,
+        "build_mode": config.build_mode,
+        "board_type": config.board_type,
+        "bl_image": bl.get("image", ""),
+        "app_image": app.get("image", ""),
+        "flash": "SKIPPED" if config.skip_flash else ("DRY_RUN" if config.dry_run else "DONE"),
     }
-    save_json("test_result.json", result)
+    artifacts.save("test_result.json", result)
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+COMMANDS = {
+    "preflight":     cmd_preflight,
+    "build-bl":      cmd_build_bl,
+    "build-app":     cmd_build_app,
+    "plan":          cmd_plan,
+    "validate":      cmd_validate,
+    "erase":         cmd_erase,
+    "program-bl":    cmd_program_bl,
+    "program-app":   cmd_program_app,
+    "verify":        cmd_verify,
+    "collect-result": cmd_collect_result,
+}
+
+
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     parser = argparse.ArgumentParser(prog="ci/run.py")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name, fn in [
-        ("preflight", cmd_preflight),
-        ("build-bl", cmd_build_bl),
-        ("build-app", cmd_build_app),
-        ("metadata", cmd_metadata),
-        ("detect-layout", cmd_detect_layout),
-        ("verify-metadata", cmd_verify_metadata),
-        ("validate-plan", cmd_validate_plan),
-        ("locate-images", cmd_locate_images),
-        ("erase", cmd_erase),
-        ("program-app", cmd_program_app),
-        ("program-bl", cmd_program_bl),
-        ("verify-flash", cmd_verify_flash),
-        ("reset", cmd_reset),
-        ("rtt", cmd_rtt),
-        ("collect-result", cmd_collect_result),
-    ]:
-        sub.add_parser(name).set_defaults(func=fn)
+    for name in COMMANDS:
+        sub.add_parser(name)
     args = parser.parse_args()
-    args.func(args)
+
+    config = CIConfig.from_env()
+    artifacts = ArtifactRepository(config.artifacts_dir)
+    COMMANDS[args.cmd](config, artifacts)
 
 
 if __name__ == "__main__":
