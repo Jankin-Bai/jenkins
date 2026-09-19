@@ -52,6 +52,7 @@ pipeline {
 
     // --------------------------------------------------------------------
     // 环境变量：只描述执行环境（规则19）。业务状态全部走 artifact。
+    // BL_GCC/APP_GCC 映射到参数，供 run.py 和 build_app.bat 使用。
     // TODO(m3): BL_SDK / APP_SDK / GR_CONSOLE 挪到 Node 环境变量
     // --------------------------------------------------------------------
     environment {
@@ -62,8 +63,10 @@ pipeline {
         ARTIFACTS = "${WORKSPACE}\\artifacts"
         CHIP      = 'GR5526'
 
-        BL_SDK  = 'D:/Users/Administrator/Documents/code/wingcard_cli/GR5526_SDK_V1.0.4'
-        APP_SDK = 'D:/Users/Administrator/Documents/code/wingcard_cli/GR5526_SDK_V1.0.4'
+        BL_GCC   = "${params.BL_PROJECT_PATH}"
+        APP_GCC  = "${params.APP_PROJECT_PATH}"
+        BL_SDK   = 'D:/Users/Administrator/Documents/code/wingcard_cli/GR5526_SDK_V1.0.4'
+        APP_SDK  = 'D:/Users/Administrator/Documents/code/wingcard_cli/GR5526_SDK_V1.0.4'
         GR_CONSOLE = 'D:\\Program Files (x86)\\Goodix\\GProgrammer\\GR5xxx_console.exe'
     }
 
