@@ -24,8 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ci.config import CIConfig
-from ci.artifacts import ArtifactRepository
+from config import CIConfig
+from artifacts import ArtifactRepository
 
 log = logging.getLogger(__name__)
 
@@ -209,7 +209,6 @@ def cmd_collect_result(config: CIConfig, artifacts: ArtifactRepository) -> None:
     """post.always: aggregate results."""
     bl = artifacts.load("bl_build.json")
     app = artifacts.load("app_build.json")
-    plan = artifacts.load("flash_plan.json")
     result = {
         "job": "gr5526-ci-v2",
         "dry_run": config.dry_run,
