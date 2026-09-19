@@ -92,6 +92,11 @@ def run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
 # ---------------------------------------------------------------------------
 def cmd_preflight(_args) -> None:
     """Stage 1.2: 工具/SDK/Makefile 存在性检查 + py_compile + J-Link 检测。"""
+    # 调试打印：确认 Jenkins 参数确实注入了环境变量
+    print(f"[preflight] DRY_RUN env = {os.environ.get('DRY_RUN', '<MISSING>')!r}")
+    print(f"[preflight] BL_GCC  env = {os.environ.get('BL_GCC', '<MISSING>')!r}")
+    print(f"[preflight] APP_GCC env = {os.environ.get('APP_GCC', '<MISSING>')!r}")
+
     # TODO: 1) 检查 GR_CONSOLE / arm-none-eabi-gcc / mingw32-make 存在
     # TODO: 2) 检查 BL_GCC/Makefile, APP_GCC/Makefile, BL_SDK, APP_SDK
     # TODO: 3) 检查 tools/*.py 与 ci/flash_plan.py 存在
@@ -113,13 +118,16 @@ def cmd_preflight(_args) -> None:
 
 def cmd_build_bl(_args) -> None:
     """Stage 2.1: 编译 bootloader + generate bl_fw.bin。"""
-    console = from_env()
-    bl_gcc = Path(env("BL_GCC"))
-    out_bin = env("CI_ROOT") + "\\bl_fw.bin"
+    # DRY_RUN 检查必须在读取任何 env 之前，避免缺变量时直接崩
     if is_dry_run():
+        out_bin = env("CI_ROOT") + "\\bl_fw.bin"
         print("[build-bl][DRY-RUN] would: make clean && make && grConsole generate")
         save_json("bl_build.json", {"status": "dry-run", "image": out_bin})
         return
+
+    bl_gcc = Path(env("BL_GCC"))
+    out_bin = env("CI_ROOT") + "\\bl_fw.bin"
+    console = from_env()
     # TODO: cd BL_GCC && mingw32-make clean && mingw32-make
     # TODO: 校验 out/app_bootloader.bin 存在
     # TODO: console.generate_image(bl_gcc/out/app_bootloader.bin, out_bin, "0x00200000", 1024, 1)
@@ -209,6 +217,13 @@ def cmd_validate_plan(_args) -> None:
 def cmd_locate_images(_args) -> None:
     """Stage 4.4: 定位 bl_fw.bin / app_fw.bin，写回 flash_plan.json。"""
     plan = load_json("flash_plan.json")
+    if is_dry_run():
+        # DRY_RUN：填占位路径，不真找
+        plan.setdefault("bl_image", env("CI_ROOT") + "\\bl_fw.bin")
+        plan.setdefault("app_image", env("CI_ROOT") + "\\app_fw.bin")
+        save_json("flash_plan.json", plan)
+        print("[locate-images][DRY-RUN] placeholder image paths written")
+        return
     # TODO: 优先 CI_ROOT/bl_fw.bin、CI_ROOT/app_fw.bin；
     # 找不到再在 BL_GCC / APP_GCC 下 dir /b /s *.bin 找。
     # 找到后写 plan["bl_image"], plan["app_image"]，save_json。
@@ -217,6 +232,9 @@ def cmd_locate_images(_args) -> None:
 
 def cmd_erase(_args) -> None:
     """Stage 4.6: 擦 BL / Bank A / Bank B（NVDS 保留）。"""
+    if is_dry_run():
+        print("[erase][DRY-RUN] would: erase BL + BankA + BankB (NVDS preserved)")
+        return
     plan = load_json("flash_plan.json")
     ctx = load_json("hardware_context.json")
     console = from_env()
@@ -230,11 +248,14 @@ def cmd_erase(_args) -> None:
 
 def cmd_program_app(_args) -> None:
     """Stage 4.7: APP FIRST。"""
+    if is_dry_run():
+        print("[program-app][DRY-RUN] would: program APP image FIRST")
+        return
     plan = load_json("flash_plan.json")
     console = from_env()
     ctx = load_json("hardware_context.json")
     image = Path(plan["app_image"])
-    if not image.exists() and not is_dry_run():
+    if not image.exists():
         raise SystemExit(f"APP image not found: {image}")
     console.program(image, env("CHIP"), ctx["jlink"]["idx"])
     print("[program-app] APP programmed FIRST")
@@ -242,11 +263,14 @@ def cmd_program_app(_args) -> None:
 
 def cmd_program_bl(_args) -> None:
     """Stage 4.8: Bootloader LAST（SCA 最终指向 BL）。"""
+    if is_dry_run():
+        print("[program-bl][DRY-RUN] would: program Bootloader LAST")
+        return
     plan = load_json("flash_plan.json")
     console = from_env()
     ctx = load_json("hardware_context.json")
     image = Path(plan["bl_image"])
-    if not image.exists() and not is_dry_run():
+    if not image.exists():
         raise SystemExit(f"BL image not found: {image}")
     console.program(image, env("CHIP"), ctx["jlink"]["idx"])
     print("[program-bl] Bootloader programmed LAST; SCA final -> BL")
@@ -269,6 +293,9 @@ def cmd_verify_flash(_args) -> None:
 
 def cmd_reset(_args) -> None:
     """Stage 4.10: GR5xxx_console reset（不用 J-Link）。"""
+    if is_dry_run():
+        print("[reset][DRY-RUN] would: reset device via GR5xxx_console")
+        return
     console = from_env()
     console.reset(1, 0)
     print("[reset] device reset via GR5xxx_console")
