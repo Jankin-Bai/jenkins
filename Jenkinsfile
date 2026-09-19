@@ -75,7 +75,6 @@ pipeline {
         stage('0. Checkout SCM') {
             steps {
                 retry(3) {
-                    sleep(time: 15, unit: 'SECONDS') when: false  // 仅占行；真正 retry 见下
                     checkout scm
                 }
             }
